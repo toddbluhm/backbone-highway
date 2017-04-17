@@ -81,11 +81,9 @@ Route.prototype = {
                 return Promise.resolve(
                   action({ resolve, reject, params })
                 )
-              },
-              function onRejected () {
-                return reject()
               }
             )
+            .then(resolve, reject)
         }
 
         // Just execute action if no `before` events are declared

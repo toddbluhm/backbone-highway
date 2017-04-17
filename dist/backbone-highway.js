@@ -246,11 +246,9 @@
                   return Promise.resolve(
                     action({ resolve: resolve, reject: reject, params: params })
                   )
-                },
-                function onRejected () {
-                  return reject()
                 }
               )
+              .then(resolve, reject)
           }
 
           // Just execute action if no `before` events are declared
