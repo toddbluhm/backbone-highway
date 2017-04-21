@@ -32,10 +32,9 @@ export default {
     return Promise.all(
       _.map(events, (evt) => {
         if (_.isFunction(evt)) {
-          return new Promise((resolve, reject) => {
-            evt({ resolve, reject, params })
-            return null
-          })
+          return Promise.resolve(
+            evt({ params })
+          )
         }
 
         this.dispatch(evt, params)

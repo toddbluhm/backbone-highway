@@ -1,4 +1,5 @@
 import _ from 'underscore'
+import qs from 'qs'
 import trigger from './trigger'
 import urlComposer from 'url-composer'
 
@@ -67,41 +68,50 @@ Route.prototype = {
 
     // Wrap the route action
     return function actionWrapper (...args) {
+      // Parse query string first
+      const queryString = args.pop()
+      let query
+      if (queryString) {
+        query = qs.parse(queryString)
+      }
+
+      // If we did not parse anything out the push the value back onto args
+      if (!query && queryString) {
+        args.push(queryString)
+      }
+
       // Convert args to object
-      const params = urlComposer.params(path, args)
+      let params = urlComposer.params(path, args)
+      if (query) {
+        params = Object.assign({}, query, params)
+      }
 
       // Create promise for async handling of controller execution
-      return new Promise((resolve, reject) => {
-        // Trigger `before` events/middlewares
-        if (before) {
-          return trigger.exec({ name, events: before, params })
-            .then(
-              function onFulfilled () {
-                // Execute original route action passing route params and promise flow controls
-                return Promise.resolve(
-                  action({ resolve, reject, params })
-                )
-              }
-            )
-            .then(resolve, reject)
-        }
-
+      let prom
+      // Trigger `before` events/middlewares
+      if (before) {
+        prom = trigger.exec({ name, events: before, params })
+          .then(
+            function onFulfilled () {
+              // Execute original route action passing route params and promise flow controls
+              return action({ params })
+            }
+          )
+      } else {
         // Just execute action if no `before` events are declared
-        return Promise.resolve(
-          action({ resolve, reject, params })
+        prom = Promise.resolve(
+          action({ params })
         )
-      })
+      }
+
+      return prom
       // Wait for promise resolve
       .then(result => {
         // Trigger `after` events/middlewares
         if (after) {
           return trigger.exec({ name, events: after, params })
         }
-
         return true
-      }).catch(err => {
-        // TODO What should we do when the action is rejected
-        console.error('caught action error', err)
       })
     }
   },

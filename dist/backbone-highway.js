@@ -1,10 +1,11 @@
 (function (global, factory) {
-  typeof exports === 'object' && typeof module !== 'undefined' ? module.exports = factory(require('underscore'), require('backbone'), require('url-composer')) :
-  typeof define === 'function' && define.amd ? define(['underscore', 'backbone', 'url-composer'], factory) :
-  (global.Backbone = global.Backbone || {}, global.Backbone.Highway = factory(global._,global.Backbone,global.urlComposer));
-}(this, function (_,Backbone,urlComposer) { 'use strict';
+  typeof exports === 'object' && typeof module !== 'undefined' ? module.exports = factory(require('underscore'), require('qs'), require('backbone'), require('url-composer')) :
+  typeof define === 'function' && define.amd ? define(['underscore', 'qs', 'backbone', 'url-composer'], factory) :
+  (global.Backbone = global.Backbone || {}, global.Backbone.Highway = factory(global._,global.qs,global.Backbone,global.urlComposer));
+}(this, function (_,qs,Backbone,urlComposer) { 'use strict';
 
   _ = 'default' in _ ? _['default'] : _;
+  qs = 'default' in qs ? qs['default'] : qs;
   Backbone = 'default' in Backbone ? Backbone['default'] : Backbone;
   urlComposer = 'default' in urlComposer ? urlComposer['default'] : urlComposer;
 
@@ -82,9 +83,9 @@
   var store = createStore()
 
   var BackboneRouter = {
-    create: function create () {
+    create: function create (execute) {
       var Router = Backbone.Router.extend(
-        store.getDefinitions()
+        Object.assign({}, store.getDefinitions(), { execute: execute })
       )
       return new Router()
     },
@@ -141,10 +142,9 @@
       return Promise.all(
         _.map(events, function (evt) {
           if (_.isFunction(evt)) {
-            return new Promise(function (resolve, reject) {
-              evt({ resolve: resolve, reject: reject, params: params })
-              return null
-            })
+            return Promise.resolve(
+              evt({ params: params })
+            )
           }
 
           this$1.dispatch(evt, params)
@@ -232,41 +232,50 @@
         var args = [], len = arguments.length;
         while ( len-- ) args[ len ] = arguments[ len ];
 
+        // Parse query string first
+        var queryString = args.pop()
+        var query
+        if (queryString) {
+          query = qs.parse(queryString)
+        }
+
+        // If we did not parse anything out the push the value back onto args
+        if (!query && queryString) {
+          args.push(queryString)
+        }
+
         // Convert args to object
         var params = urlComposer.params(path, args)
+        if (query) {
+          params = Object.assign({}, query, params)
+        }
 
         // Create promise for async handling of controller execution
-        return new Promise(function (resolve, reject) {
-          // Trigger `before` events/middlewares
-          if (before) {
-            return trigger.exec({ name: name, events: before, params: params })
-              .then(
-                function onFulfilled () {
-                  // Execute original route action passing route params and promise flow controls
-                  return Promise.resolve(
-                    action({ resolve: resolve, reject: reject, params: params })
-                  )
-                }
-              )
-              .then(resolve, reject)
-          }
-
+        var prom
+        // Trigger `before` events/middlewares
+        if (before) {
+          prom = trigger.exec({ name: name, events: before, params: params })
+            .then(
+              function onFulfilled () {
+                // Execute original route action passing route params and promise flow controls
+                return action({ params: params })
+              }
+            )
+        } else {
           // Just execute action if no `before` events are declared
-          return Promise.resolve(
-            action({ resolve: resolve, reject: reject, params: params })
+          prom = Promise.resolve(
+            action({ params: params })
           )
-        })
+        }
+
+        return prom
         // Wait for promise resolve
         .then(function (result) {
           // Trigger `after` events/middlewares
           if (after) {
             return trigger.exec({ name: name, events: after, params: params })
           }
-
           return true
-        }).catch(function (err) {
-          // TODO What should we do when the action is rejected
-          console.error('caught action error', err)
         })
       }
     },
@@ -274,6 +283,30 @@
     getNavigateOptions: function getNavigateOptions (options) {
       return _.extend({}, defaultNavigateOptions, _.pick(options, ['trigger', 'replace']))
     }
+  }
+
+  function RedirectError (ref) {
+    var routeName = ref.routeName;
+    var routePath = ref.routePath;
+    var routeParams = ref.routeParams;
+    var message = ref.message; if ( message === void 0 ) message = 'Redirect Error';
+
+    this.message = message
+    this.name = 'RedirectError'
+    this.routeName = routeName
+    this.routePath = routePath
+    this.routeParams = routeParams
+    if (Error.captureStackTrace) {
+      Error.captureStackTrace(this)
+    } else {
+      var temp = Error()
+      this.stack = temp.stack
+    }
+  }
+  RedirectError.prototype = Object.create(Error.prototype)
+
+  var errors = {
+    RedirectError: RedirectError
   }
 
   var defaultOptions = {
@@ -309,15 +342,19 @@
     // Check if it was actually defined
     if (error) {
       // Execute a 404 controller
-      error.execute()
+      return error.execute()
     }
   }
 
   // #### Highway public API definition
   var highway = {
+    // Output debug info in the console
+    DEBUG: false,
     // **Initialize the Backbone.Highway router**
     // - *@param {Object} **options** - Object to override default router configuration*
     start: function start (options) {
+      var this$1 = this;
+
       // Extend default options
       options = _.extend({}, defaultOptions, options)
 
@@ -325,7 +362,21 @@
       store.set('options', options)
 
       // Instantiate Backbone.Router
-      this.router = BackboneRouter.create()
+      this.router = BackboneRouter.create(function (callback, args, name) {
+        var promise
+        if (callback) {
+          promise = callback.apply(this$1, args)
+        };
+        if (promise && typeof promise.then === 'function') {
+          promise.catch(function (e) {
+            if (e.name === 'RedirectError') {
+              this$1.go({ name: e.routeName, path: e.routePath, params: e.routeParams })
+              return
+            }
+            return this$1.routeError(e)
+          })
+        }
+      })
 
       // Start Backbone.history
       var existingRoute = BackboneRouter.start(options)
@@ -383,6 +434,11 @@
         to.path = route.parse(to.args || to.params)
       }
 
+      // Add the query params to the route if any
+      if (to.query) {
+        to.path = (to.path) + "?" + (qs.stringify(to.query))
+      }
+
       // Execute Backbone.Router navigate
       this.router.navigate(to.path, route.getNavigateOptions(to))
 
@@ -407,7 +463,18 @@
     restart: BackboneRouter.restart,
 
     // Export the highway store
-    store: store
+    store: store,
+
+    // Called when a route or middleware returns an error
+    routeError: function routeError (e) {
+      if (this.DEBUG) {
+        console.error('Route Error', e)
+      }
+      return error404()
+    },
+
+    // Object containing various types of errors middleware/routes can return
+    errors: errors
   }
 
   return highway;

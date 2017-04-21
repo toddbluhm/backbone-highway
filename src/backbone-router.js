@@ -3,9 +3,9 @@ import Backbone from 'backbone'
 import store from './store'
 
 export default {
-  create () {
+  create (execute) {
     const Router = Backbone.Router.extend(
-      store.getDefinitions()
+      Object.assign({}, store.getDefinitions(), { execute })
     )
     return new Router()
   },

@@ -1,7 +1,9 @@
 import _ from 'underscore'
+import qs from 'qs'
 import BackboneRouter from './backbone-router'
 import Route from './route'
 import store from './store'
+import errors from './error-types'
 
 const defaultOptions = {
   // #### Backbone History options
@@ -36,12 +38,14 @@ const error404 = () => {
   // Check if it was actually defined
   if (error) {
     // Execute a 404 controller
-    error.execute()
+    return error.execute()
   }
 }
 
 // #### Highway public API definition
 const highway = {
+  // Output debug info in the console
+  DEBUG: false,
   // **Initialize the Backbone.Highway router**
   // - *@param {Object} **options** - Object to override default router configuration*
   start (options) {
@@ -52,7 +56,21 @@ const highway = {
     store.set('options', options)
 
     // Instantiate Backbone.Router
-    this.router = BackboneRouter.create()
+    this.router = BackboneRouter.create((callback, args, name) => {
+      let promise
+      if (callback) {
+        promise = callback.apply(this, args)
+      };
+      if (promise && typeof promise.then === 'function') {
+        promise.catch((e) => {
+          if (e.name === 'RedirectError') {
+            this.go({ name: e.routeName, path: e.routePath, params: e.routeParams })
+            return
+          }
+          return this.routeError(e)
+        })
+      }
+    })
 
     // Start Backbone.history
     const existingRoute = BackboneRouter.start(options)
@@ -110,6 +128,11 @@ const highway = {
       to.path = route.parse(to.args || to.params)
     }
 
+    // Add the query params to the route if any
+    if (to.query) {
+      to.path = `${to.path}?${qs.stringify(to.query)}`
+    }
+
     // Execute Backbone.Router navigate
     this.router.navigate(to.path, route.getNavigateOptions(to))
 
@@ -134,7 +157,18 @@ const highway = {
   restart: BackboneRouter.restart,
 
   // Export the highway store
-  store
+  store,
+
+  // Called when a route or middleware returns an error
+  routeError (e) {
+    if (this.DEBUG) {
+      console.error('Route Error', e)
+    }
+    return error404()
+  },
+
+  // Object containing various types of errors middleware/routes can return
+  errors
 }
 
 export default highway
