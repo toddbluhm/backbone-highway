@@ -103,6 +103,10 @@
     restart: function restart () {
       Backbone.history.stop()
       Backbone.history.start()
+    },
+
+    back: function back () {
+      Backbone.history.history.back()
     }
   }
 
@@ -454,6 +458,11 @@
       store.setLastRoute(route)
 
       return true
+    },
+
+    goBack: function goBack () {
+      // Execute Backbone.Router navigate
+      BackboneRouter.back()
     },
 
     // Reload current route by restarting `Backbone.history`.

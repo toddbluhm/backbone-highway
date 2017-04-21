@@ -23,5 +23,9 @@ export default {
   restart () {
     Backbone.history.stop()
     Backbone.history.start()
+  },
+
+  back () {
+    Backbone.history.history.back()
   }
 }

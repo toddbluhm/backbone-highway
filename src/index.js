@@ -150,6 +150,11 @@ const highway = {
     return true
   },
 
+  goBack () {
+    // Execute Backbone.Router navigate
+    BackboneRouter.back()
+  },
+
   // Reload current route by restarting `Backbone.history`.
   reload: BackboneRouter.restart,
 
