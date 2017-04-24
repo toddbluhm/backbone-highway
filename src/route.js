@@ -82,25 +82,22 @@ Route.prototype = {
 
       // Convert args to object
       let params = urlComposer.params(path, args)
-      if (query) {
-        params = Object.assign({}, query, params)
-      }
 
       // Create promise for async handling of controller execution
       let prom
       // Trigger `before` events/middlewares
       if (before) {
-        prom = trigger.exec({ name, events: before, params })
+        prom = trigger.exec({ name, events: before, params, query })
           .then(
             function onFulfilled () {
               // Execute original route action passing route params and promise flow controls
-              return action({ params })
+              return action({ params, query })
             }
           )
       } else {
         // Just execute action if no `before` events are declared
         prom = Promise.resolve(
-          action({ params })
+          action({ params, query })
         )
       }
 
@@ -109,7 +106,7 @@ Route.prototype = {
       .then(result => {
         // Trigger `after` events/middlewares
         if (after) {
-          return trigger.exec({ name, events: after, params })
+          return trigger.exec({ name, events: after, params, query })
         }
         return true
       })

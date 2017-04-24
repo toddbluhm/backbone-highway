@@ -67,7 +67,7 @@ const highway = {
             this.go({ name: e.routeName, path: e.routePath, params: e.routeParams })
             return
           }
-          return this.routeError(e)
+          return this.error(e)
         })
       }
     })
@@ -150,7 +150,7 @@ const highway = {
     return true
   },
 
-  goBack () {
+  back () {
     // Execute Backbone.Router navigate
     BackboneRouter.back()
   },
@@ -165,7 +165,7 @@ const highway = {
   store,
 
   // Called when a route or middleware returns an error
-  routeError (e) {
+  error (e) {
     if (this.DEBUG) {
       console.error('Route Error', e)
     }

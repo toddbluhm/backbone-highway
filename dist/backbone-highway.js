@@ -250,25 +250,22 @@
 
         // Convert args to object
         var params = urlComposer.params(path, args)
-        if (query) {
-          params = Object.assign({}, query, params)
-        }
 
         // Create promise for async handling of controller execution
         var prom
         // Trigger `before` events/middlewares
         if (before) {
-          prom = trigger.exec({ name: name, events: before, params: params })
+          prom = trigger.exec({ name: name, events: before, params: params, query: query })
             .then(
               function onFulfilled () {
                 // Execute original route action passing route params and promise flow controls
-                return action({ params: params })
+                return action({ params: params, query: query })
               }
             )
         } else {
           // Just execute action if no `before` events are declared
           prom = Promise.resolve(
-            action({ params: params })
+            action({ params: params, query: query })
           )
         }
 
@@ -277,7 +274,7 @@
         .then(function (result) {
           // Trigger `after` events/middlewares
           if (after) {
-            return trigger.exec({ name: name, events: after, params: params })
+            return trigger.exec({ name: name, events: after, params: params, query: query })
           }
           return true
         })
@@ -377,7 +374,7 @@
               this$1.go({ name: e.routeName, path: e.routePath, params: e.routeParams })
               return
             }
-            return this$1.routeError(e)
+            return this$1.error(e)
           })
         }
       })
@@ -460,7 +457,7 @@
       return true
     },
 
-    goBack: function goBack () {
+    back: function back () {
       // Execute Backbone.Router navigate
       BackboneRouter.back()
     },
@@ -475,7 +472,7 @@
     store: store,
 
     // Called when a route or middleware returns an error
-    routeError: function routeError (e) {
+    error: function error (e) {
       if (this.DEBUG) {
         console.error('Route Error', e)
       }
