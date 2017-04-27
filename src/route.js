@@ -70,7 +70,7 @@ Route.prototype = {
     return function actionWrapper (...args) {
       // Parse query string first
       const queryString = args.pop()
-      let query
+      let query = {}
       if (queryString) {
         query = qs.parse(queryString)
       }

@@ -238,7 +238,7 @@
 
         // Parse query string first
         var queryString = args.pop()
-        var query
+        var query = {}
         if (queryString) {
           query = qs.parse(queryString)
         }
