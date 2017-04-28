@@ -1,12 +1,12 @@
 (function (global, factory) {
-  typeof exports === 'object' && typeof module !== 'undefined' ? module.exports = factory(require('underscore'), require('qs'), require('backbone'), require('url-composer')) :
-  typeof define === 'function' && define.amd ? define(['underscore', 'qs', 'backbone', 'url-composer'], factory) :
-  (global.Backbone = global.Backbone || {}, global.Backbone.Highway = factory(global._,global.qs,global.Backbone,global.urlComposer));
-}(this, function (_,qs,Backbone,urlComposer) { 'use strict';
+  typeof exports === 'object' && typeof module !== 'undefined' ? module.exports = factory(require('underscore'), require('backbone'), require('qs'), require('url-composer')) :
+  typeof define === 'function' && define.amd ? define(['underscore', 'backbone', 'qs', 'url-composer'], factory) :
+  (global.Backbone = global.Backbone || {}, global.Backbone.Highway = factory(global._,global.Backbone,global.qs,global.urlComposer));
+}(this, function (_,Backbone,qs,urlComposer) { 'use strict';
 
   _ = 'default' in _ ? _['default'] : _;
-  qs = 'default' in qs ? qs['default'] : qs;
   Backbone = 'default' in Backbone ? Backbone['default'] : Backbone;
+  qs = 'default' in qs ? qs['default'] : qs;
   urlComposer = 'default' in urlComposer ? urlComposer['default'] : urlComposer;
 
   function createStore () {
@@ -110,49 +110,67 @@
     }
   }
 
+  var options = {
+    // #### Backbone History options
+    // Docs: http://backbonejs.org/#History
+
+    // Use html5 pushState
+    pushState: true,
+
+    // Root url for pushState
+    root: '',
+
+    // Set to false to force page reloads for old browsers
+    hashChange: true,
+
+    // Don't trigger the initial route
+    silent: false,
+
+    // #### Backbone.Highway specific options
+    debug: false,
+
+    // Event aggregator instance
+    dispatcher: null
+  }
+
   var trigger = {
-    dispatch: function dispatch (evt, params) {
-      var ref = store.get('options');
-      var dispatcher = ref.dispatcher;
+    dispatch: function dispatch (ref) {
+      var evt = ref.evt;
+      var params = ref.params;
+      var query = ref.query;
 
-      if (_.isString(evt)) {
-        evt = { name: evt }
-      }
-
+      var ref$1 = store.get('options');
+      var dispatcher = ref$1.dispatcher;
       if (!dispatcher) {
-        throw new Error(("[ highway ] Event '" + (evt.name) + "' could not be triggered, missing dispatcher"))
+        throw new Error(("[ highway ] Event '" + evt + "' could not be triggered, missing dispatcher"))
       }
 
-      params = evt.params || params
+      if (options.debug) {
+        console.log(
+  ("Trigger event " + evt + ",\nparams:\n  " + params + ",\nquery:\n  " + query))
+      }
 
-      console.log(("Trigger event " + (evt.name) + ", params:"), params)
-
-      dispatcher.trigger(evt.name, { params: params })
+      return dispatcher.trigger(evt, { params: params, query: query })
     },
 
-    exec: function exec (options) {
+    exec: function exec (ref) {
       var this$1 = this;
+      var name = ref.name;
+      var events = ref.events;
+      var params = ref.params;
+      var query = ref.query;
 
-      var name = options.name;
-      var events = options.events;
-      var params = options.params;
-
-      if (!_.isEmpty && !_.isArray(events)) {
-        throw new Error(("[ highway ] Route events definition for " + name + " needs to be an Array"))
+      if (!_.isArray(events)) {
+        events = [events]
       }
 
-      if (!_.isArray(events)) events = [events]
-
       return Promise.all(
-        _.map(events, function (evt) {
+        events.map(function (evt) {
           if (_.isFunction(evt)) {
-            return Promise.resolve(
-              evt({ params: params })
-            )
+            return evt({ params: params })
           }
 
-          this$1.dispatch(evt, params)
-          return Promise.resolve()
+          return this$1.dispatch({ evt: evt, params: params, query: query })
         })
       )
     }
@@ -187,8 +205,8 @@
       this.definition[property] = value
     },
 
-    parse: function parse (params) {
-      return urlComposer.build({ path: this.get('path'), params: params })
+    parse: function parse (params, query) {
+      return urlComposer.build({ path: this.get('path'), params: params, query: query })
     },
 
     configure: function configure () {
@@ -243,11 +261,6 @@
           query = qs.parse(queryString)
         }
 
-        // If we did not parse anything out the push the value back onto args
-        if (!query && queryString) {
-          args.push(queryString)
-        }
-
         // Convert args to object
         var params = urlComposer.params(path, args)
 
@@ -256,17 +269,10 @@
         // Trigger `before` events/middlewares
         if (before) {
           prom = trigger.exec({ name: name, events: before, params: params, query: query })
-            .then(
-              function onFulfilled () {
-                // Execute original route action passing route params and promise flow controls
-                return action({ params: params, query: query })
-              }
-            )
+            .then(function () { return action({ params: params, query: query }); })
         } else {
           // Just execute action if no `before` events are declared
-          prom = Promise.resolve(
-            action({ params: params, query: query })
-          )
+          prom = Promise.resolve(action({ params: params, query: query }))
         }
 
         return prom
@@ -310,31 +316,6 @@
     RedirectError: RedirectError
   }
 
-  var defaultOptions = {
-    // #### Backbone History options
-    // Docs: http://backbonejs.org/#History
-
-    // Use html5 pushState
-    pushState: true,
-
-    // Root url for pushState
-    root: '',
-
-    // Set to false to force page reloads for old browsers
-    hashChange: true,
-
-    // Don't trigger the initial route
-    silent: false,
-
-    // #### Backbone.Highway specific options
-
-    // Print out debug information
-    debug: false,
-
-    // Event aggregator instance
-    dispatcher: null
-  }
-
   // Method to execute the 404 controller
   var error404 = function () {
     // Retrieve the 404 controller
@@ -349,15 +330,13 @@
 
   // #### Highway public API definition
   var highway = {
-    // Output debug info in the console
-    DEBUG: false,
     // **Initialize the Backbone.Highway router**
     // - *@param {Object} **options** - Object to override default router configuration*
-    start: function start (options) {
+    start: function start (options$$) {
       var this$1 = this;
 
       // Extend default options
-      options = _.extend({}, defaultOptions, options)
+      Object.assign(options, options$$)
 
       // Store options in global store
       store.set('options', options)
@@ -367,7 +346,7 @@
         var promise
         if (callback) {
           promise = callback.apply(this$1, args)
-        };
+        }
         if (promise && typeof promise.then === 'function') {
           promise.catch(function (e) {
             if (e.name === 'RedirectError') {
@@ -432,12 +411,7 @@
 
       // Parse the route path passing in arguments
       if (!to.path) {
-        to.path = route.parse(to.args || to.params)
-      }
-
-      // Add the query params to the route if any
-      if (to.query) {
-        to.path = (to.path) + "?" + (qs.stringify(to.query))
+        to.path = route.parse(to.args || to.params, to.query)
       }
 
       // Execute Backbone.Router navigate
@@ -473,8 +447,10 @@
 
     // Called when a route or middleware returns an error
     error: function error (e) {
-      if (this.DEBUG) {
-        console.error('Route Error', e)
+      if (options.debug) {
+        console.error(
+  ("Route Error -\n  " + e)
+        )
       }
       return error404()
     },

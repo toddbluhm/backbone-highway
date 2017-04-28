@@ -32,8 +32,8 @@ Route.prototype = {
     this.definition[property] = value
   },
 
-  parse (params) {
-    return urlComposer.build({ path: this.get('path'), params })
+  parse (params, query) {
+    return urlComposer.build({ path: this.get('path'), params, query })
   },
 
   configure () {
@@ -75,11 +75,6 @@ Route.prototype = {
         query = qs.parse(queryString)
       }
 
-      // If we did not parse anything out the push the value back onto args
-      if (!query && queryString) {
-        args.push(queryString)
-      }
-
       // Convert args to object
       let params = urlComposer.params(path, args)
 
@@ -88,17 +83,10 @@ Route.prototype = {
       // Trigger `before` events/middlewares
       if (before) {
         prom = trigger.exec({ name, events: before, params, query })
-          .then(
-            function onFulfilled () {
-              // Execute original route action passing route params and promise flow controls
-              return action({ params, query })
-            }
-          )
+          .then(() => action({ params, query }))
       } else {
         // Just execute action if no `before` events are declared
-        prom = Promise.resolve(
-          action({ params, query })
-        )
+        prom = Promise.resolve(action({ params, query }))
       }
 
       return prom

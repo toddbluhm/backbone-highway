@@ -1,34 +1,9 @@
 import _ from 'underscore'
-import qs from 'qs'
 import BackboneRouter from './backbone-router'
 import Route from './route'
 import store from './store'
 import errors from './error-types'
-
-const defaultOptions = {
-  // #### Backbone History options
-  // Docs: http://backbonejs.org/#History
-
-  // Use html5 pushState
-  pushState: true,
-
-  // Root url for pushState
-  root: '',
-
-  // Set to false to force page reloads for old browsers
-  hashChange: true,
-
-  // Don't trigger the initial route
-  silent: false,
-
-  // #### Backbone.Highway specific options
-
-  // Print out debug information
-  debug: false,
-
-  // Event aggregator instance
-  dispatcher: null
-}
+import GlobalOptions from './options'
 
 // Method to execute the 404 controller
 const error404 = () => {
@@ -44,23 +19,21 @@ const error404 = () => {
 
 // #### Highway public API definition
 const highway = {
-  // Output debug info in the console
-  DEBUG: false,
   // **Initialize the Backbone.Highway router**
   // - *@param {Object} **options** - Object to override default router configuration*
   start (options) {
     // Extend default options
-    options = _.extend({}, defaultOptions, options)
+    Object.assign(GlobalOptions, options)
 
     // Store options in global store
-    store.set('options', options)
+    store.set('options', GlobalOptions)
 
     // Instantiate Backbone.Router
     this.router = BackboneRouter.create((callback, args, name) => {
       let promise
       if (callback) {
         promise = callback.apply(this, args)
-      };
+      }
       if (promise && typeof promise.then === 'function') {
         promise.catch((e) => {
           if (e.name === 'RedirectError') {
@@ -73,11 +46,11 @@ const highway = {
     })
 
     // Start Backbone.history
-    const existingRoute = BackboneRouter.start(options)
+    const existingRoute = BackboneRouter.start(GlobalOptions)
 
     // Check if the first load route exists, if not and
     // the router is not started silently try to execute 404 controller
-    if (!existingRoute && !options.silent) error404()
+    if (!existingRoute && !GlobalOptions.silent) error404()
   },
 
   // **Register a route to the Backbone.Highway router**
@@ -125,12 +98,7 @@ const highway = {
 
     // Parse the route path passing in arguments
     if (!to.path) {
-      to.path = route.parse(to.args || to.params)
-    }
-
-    // Add the query params to the route if any
-    if (to.query) {
-      to.path = `${to.path}?${qs.stringify(to.query)}`
+      to.path = route.parse(to.args || to.params, to.query)
     }
 
     // Execute Backbone.Router navigate
@@ -166,8 +134,11 @@ const highway = {
 
   // Called when a route or middleware returns an error
   error (e) {
-    if (this.DEBUG) {
-      console.error('Route Error', e)
+    if (GlobalOptions.debug) {
+      console.error(
+`Route Error -
+  ${e}`
+      )
     }
     return error404()
   },

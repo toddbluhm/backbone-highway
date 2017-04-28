@@ -1,44 +1,38 @@
 import _ from 'underscore'
 import store from './store'
+import GlobalOptions from './options'
 
 export default {
-  dispatch (evt, params) {
+  dispatch ({ evt, params, query }) {
     const { dispatcher } = store.get('options')
-
-    if (_.isString(evt)) {
-      evt = { name: evt }
-    }
-
     if (!dispatcher) {
-      throw new Error(`[ highway ] Event '${evt.name}' could not be triggered, missing dispatcher`)
+      throw new Error(`[ highway ] Event '${evt}' could not be triggered, missing dispatcher`)
     }
 
-    params = evt.params || params
+    if (GlobalOptions.debug) {
+      console.log(
+`Trigger event ${evt},
+params:
+  ${params},
+query:
+  ${query}`)
+    }
 
-    console.log(`Trigger event ${evt.name}, params:`, params)
-
-    dispatcher.trigger(evt.name, { params })
+    return dispatcher.trigger(evt, { params, query })
   },
 
-  exec (options) {
-    let { name, events, params } = options
-
-    if (!_.isEmpty && !_.isArray(events)) {
-      throw new Error(`[ highway ] Route events definition for ${name} needs to be an Array`)
+  exec ({ name, events, params, query }) {
+    if (!_.isArray(events)) {
+      events = [events]
     }
 
-    if (!_.isArray(events)) events = [events]
-
     return Promise.all(
-      _.map(events, (evt) => {
+      events.map(evt => {
         if (_.isFunction(evt)) {
-          return Promise.resolve(
-            evt({ params })
-          )
+          return evt({ params })
         }
 
-        this.dispatch(evt, params)
-        return Promise.resolve()
+        return this.dispatch({ evt, params, query })
       })
     )
   }
